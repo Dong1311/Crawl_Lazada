@@ -30,3 +30,4 @@ Mỗi lần chạy batch 5 url, dữ liệu tạm thời được ghi vào produ
 > - Khi chạy đôi khi có popup "Giao hàng từ nước ngoài", nếu để yên thì sẽ không crawl được bình luận cho sản phẩm đó thôi
 
 4. Sau khi chạy hết file `urls.txt`, xóa file `last_processed_url.txt` và chạy lại `CrawlLinks.py` để lấy loạt url tiếp theo. Lặp lại bước 3.
+5. Ở file CrawlLinks.py có dòng URL2 = "&q=shirt", thay shirt bằng các keyword khác để tìm kiếm theo category
