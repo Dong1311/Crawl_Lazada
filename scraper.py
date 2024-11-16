@@ -1,5 +1,7 @@
 import os
 import csv
+import pickle
+
 from collections import Counter
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -9,6 +11,31 @@ from selenium.webdriver.support import expected_conditions as EC
 from tqdm import tqdm
 from config import get_chrome_options, get_chrome_service
 
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+
+# Load và lưu cookie để tránh phải đăng nhập lại
+def save_cookies(driver, filename):
+    with open(filename, "wb") as file:
+        pickle.dump(driver.get_cookies(), file)
+
+def load_cookies(driver, filename):
+    with open(filename, "rb") as file:
+        cookies = pickle.load(file)
+        for cookie in cookies:
+            driver.add_cookie(cookie)
+
+def login_shopee(driver):
+    # Thay `YOUR_USERNAME` và `YOUR_PASSWORD` bằng thông tin đăng nhập của bạn
+    USERNAME = "YOUR_USERNAME"
+    PASSWORD = "YOUR_PASSWORD"
+    
+    driver.get("https://shopee.vn/buyer/login")
+    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.NAME, "loginKey"))).send_keys(USERNAME)
+    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.NAME, "password"))).send_keys(PASSWORD)
+    WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".shopee-button-solid"))).click()
+
+            
 def load_last_processed_index(filename):
     try:
         with open(filename, 'r', encoding='utf-8') as file:
@@ -31,37 +58,41 @@ def scrape_reviews(driver, url):
     reviews = [] 
 
     try:
+        # Đợi cho phần bình luận xuất hiện trên Shopee
         WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, '.pdp-mod-review'))
+            EC.presence_of_element_located((By.CSS_SELECTOR, '.shopee-product-rating'))
         )
     except Exception:
-        print(f"Không tìm thấy phần bình luận {url}")
+        print(f"Không tìm thấy phần bình luận tại {url}")
         return reviews
 
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     
     try:
-        review_elements = soup.find('div', class_='mod-reviews')
+        review_elements = soup.find_all('div', class_='shopee-product-rating')
 
         if review_elements:
-            items = review_elements.find_all('div', class_='item')
-            for item in items:
+            for item in review_elements:
                 review = {}
-                stars_container = item.find('div', class_='container-star')
+
+                # Số sao (rating) của bình luận
+                stars_container = item.find('div', class_='shopee-rating-stars__stars')
                 if stars_container:
-                    star_images = stars_container.find_all('img', class_='star')
-                    src_list = [img['src'] for img in star_images]
-                    src_count = Counter(src_list)
-                    num_stars_gold = sum(count for src, count in src_count.items() if "TB19ZvEgfDH8KJjy1XcXXcpdXXa-64-64.png" in src)
-                    review['rating'] = num_stars_gold
+                    star_count = len(stars_container.find_all('div', class_='icon-rating-solid--active'))
+                    review['rating'] = star_count
                 
-                content_element = item.find('div', class_='item-content')
+                # Nội dung của bình luận
+                content_element = item.find('div', class_='shopee-product-rating__content')
                 review['content'] = content_element.get_text(strip=True) if content_element else 'N/A'
+                
+                # Thêm bình luận vào danh sách
                 reviews.append(review)
     except Exception as e:
-        print(f"Error: {e} trên trang {url}")
+        print(f"Lỗi khi lấy dữ liệu: {e} trên trang {url}")
 
-    return reviews 
+    return reviews
+
+
 
 def write_to_csv(csv_filename, reviews):
     """Appends reviews to the CSV file."""
@@ -73,10 +104,14 @@ def write_to_csv(csv_filename, reviews):
                 csvwriter.writerow([review.get('rating', 'N/A'), cleaned_content])
 
 def run_scraper():
-    options = get_chrome_options()
-    service = get_chrome_service()
-    driver = webdriver.Chrome(options=options, service=service)
+    # options = get_chrome_options()
+    # service = get_chrome_service()
+    # driver = webdriver.Chrome(options=options, service=service)
 
+    options = webdriver.ChromeOptions()
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    
     batch_size = 5
     csv_filename = 'reviews.csv'
     last_processed_index_file = 'last_processed_index.txt'
